@@ -6,6 +6,10 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const IS_PROD = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
+
+// Trust Railway's proxy so secure cookies work
+if (IS_PROD) app.set('trust proxy', 1);
 
 // Middleware
 app.use(express.json());
@@ -14,7 +18,11 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'orderly-crm-secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+  cookie: {
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: IS_PROD,
+    sameSite: IS_PROD ? 'none' : 'lax'
+  }
 }));
 
 // Static files
