@@ -652,7 +652,9 @@ function renderTokenPanel() {
     const headers = state.headers.token || Object.keys(data[0]);
     const cols = headers.map(h => {
         const hl = h.toLowerCase();
-        if (hl.includes('%') || hl.includes('sold')) return { key: h, label: h, render: v => renderPct(v) };
+        if (hl.includes('%')) return { key: h, label: h, render: v => renderPct(v) };
+        if (hl.includes('sold')) return { key: h, label: h, render: v => fmtNum(v) };
+        if (hl.includes('wallet address') || hl.includes('address')) return { key: h, label: h };
         if (hl.includes('allocation') || hl.includes('vesting') || hl.includes('wallet') || hl.includes('staking') || hl.includes('total'))
             return { key: h, label: h, render: v => fmtNum(v) };
         return { key: h, label: h };
@@ -683,7 +685,9 @@ function renderTokenPage() {
     const headers = state.headers.token || Object.keys(data[0]);
     const cols = headers.map(h => {
         const hl = h.toLowerCase();
-        if (hl.includes('%') || hl === 'sold') return { key: h, label: h, render: v => renderPct(v) };
+        if (hl.includes('%')) return { key: h, label: h, render: v => renderPct(v) };
+        if (hl.includes('sold')) return { key: h, label: h, render: v => fmtNum(v) };
+        if (hl.includes('wallet address') || hl.includes('address')) return { key: h, label: h };
         if (hl.includes('allocation') || hl.includes('vesting') || hl.includes('wallet') || hl.includes('staking') || hl.includes('total'))
             return { key: h, label: h, render: v => fmtNum(v) };
         return { key: h, label: h };
