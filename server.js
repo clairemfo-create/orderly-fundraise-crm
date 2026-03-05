@@ -371,6 +371,51 @@ app.put('/api/sheets/:tab/:rowIndex', requireAuth, async (req, res) => {
   }
 });
 
+// ==================== Delete Row ====================
+app.delete('/api/sheets/:tab/:rowIndex', requireAuth, async (req, res) => {
+  const { tab, rowIndex } = req.params;
+  const tabName = TAB_NAMES[tab];
+  const rowNum = parseInt(rowIndex) + 2; // +2 because row 1 is header, and sheets are 1-indexed
+
+  if (!tabName) return res.status(400).json({ error: `Unknown tab: ${tab}` });
+
+  try {
+    const sheets = await getSheets();
+
+    // Get the sheet's GID (numeric ID) for the batchUpdate request
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: SHEET_ID,
+      fields: 'sheets.properties'
+    });
+    const sheetMeta = meta.data.sheets.find(s => s.properties.title === tabName);
+    if (!sheetMeta) return res.status(404).json({ error: `Tab "${tabName}" not found` });
+
+    const sheetId = sheetMeta.properties.sheetId;
+
+    // Delete the row using batchUpdate
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      resource: {
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId: sheetId,
+              dimension: 'ROWS',
+              startIndex: rowNum - 1, // 0-indexed for batchUpdate
+              endIndex: rowNum
+            }
+          }
+        }]
+      }
+    });
+
+    res.json({ success: true, message: `Deleted row ${rowIndex} from ${tabName}` });
+  } catch (error) {
+    console.error(`Error deleting from ${tab}:`, error.message);
+    res.status(500).json({ error: `Failed to delete from ${tabName}: ${error.message}` });
+  }
+});
+
 // ==================== Summary Stats ====================
 app.get('/api/summary', requireAuth, async (req, res) => {
   try {

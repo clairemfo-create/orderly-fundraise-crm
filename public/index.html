@@ -56,6 +56,8 @@
         .btn-secondary:hover { background: #3a3a45; }
         .btn-ghost { background: transparent; color: #7a7a8a; border: 1px solid #2a2a35; }
         .btn-ghost:hover { color: #e0e0e0; border-color: #7C3AED; }
+        .btn-danger { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+        .btn-danger:hover { background: rgba(239,68,68,0.25); }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
 
         /* ==================== LAYOUT ==================== */
@@ -302,9 +304,12 @@
     <div class="modal">
         <h2 id="editModalTitle">Edit Investor</h2>
         <div id="editModalForm"></div>
-        <div class="form-actions" style="margin-top:20px">
-            <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
-            <button class="btn btn-primary" id="editModalSave" onclick="saveEdit()">Save Changes</button>
+        <div class="form-actions" style="margin-top:20px; justify-content:space-between">
+            <button class="btn btn-danger" id="editModalDelete" onclick="deleteRow()">Delete Investor</button>
+            <div style="display:flex;gap:12px">
+                <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
+                <button class="btn btn-primary" id="editModalSave" onclick="saveEdit()">Save Changes</button>
+            </div>
         </div>
     </div>
 </div>
@@ -873,6 +878,31 @@ async function saveEdit() {
         toast('Update failed: ' + e.message, 'error');
     } finally {
         btn.disabled = false; btn.textContent = 'Save Changes';
+    }
+}
+
+async function deleteRow() {
+    if (state.editingTab === null || state.editingRow === null) return;
+    const row = state.data[state.editingTab][state.editingRow];
+    const name = findVal(row, 'name') || findVal(row, 'contact') || 'this investor';
+    if (!confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`)) return;
+
+    const btn = document.getElementById('editModalDelete');
+    btn.disabled = true; btn.textContent = 'Deleting...';
+    try {
+        const res = await fetch(`/api/sheets/${state.editingTab}/${state.editingRow}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Delete failed'); }
+        toast('Investor deleted', 'success');
+        closeEditModal();
+        await fetchTab(state.editingTab);
+        renderDashboard();
+        if (state.editingTab === 'token') renderTokenPage();
+    } catch (e) {
+        toast('Delete failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Delete Investor';
     }
 }
 
