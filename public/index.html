@@ -314,6 +314,47 @@
     </div>
 </div>
 
+<!-- TOKEN UPDATE MODAL -->
+<div class="modal-backdrop" id="tokenUpdateModal">
+    <div class="modal" style="max-width:520px;text-align:center">
+        <div style="font-size:40px;margin-bottom:16px">📊</div>
+        <h2 style="margin-bottom:12px">Update Token Schedule</h2>
+        <p style="color:#7a7a8a;font-size:14px;line-height:1.7;margin-bottom:24px">
+            To update the token holdings and vesting schedule:
+        </p>
+        <div style="background:#0a0a0f;border:1px solid #2a2a35;border-radius:8px;padding:20px;text-align:left;margin-bottom:24px">
+            <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:16px">
+                <span style="background:#eab308;color:#000;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">1</span>
+                <span style="color:#e0e0e0;font-size:13px">Open <strong style="color:#7C3AED">Claude</strong> (the chat where you built this CRM)</span>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:16px">
+                <span style="background:#eab308;color:#000;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">2</span>
+                <span style="color:#e0e0e0;font-size:13px">Upload your <strong style="color:#eab308">token vesting Excel spreadsheet</strong></span>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start">
+                <span style="background:#eab308;color:#000;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">3</span>
+                <span style="color:#e0e0e0;font-size:13px">Say: <strong style="color:#22c55e">"Map this to the CRM token holdings tab"</strong></span>
+            </div>
+        </div>
+        <p style="color:#7a7a8a;font-size:12px;margin-bottom:20px">Claude will process the spreadsheet and update the Token Holdings tab automatically. Refresh this page when done.</p>
+        <button class="btn btn-ghost" onclick="closeTokenUpdateModal()">Got it</button>
+    </div>
+</div>
+
+<!-- ADD MODAL -->
+<div class="modal-backdrop" id="addModal">
+    <div class="modal">
+        <h2 id="addModalTitle">Add New Investor</h2>
+        <div class="form-success" id="addSuccess" style="display:none">Investor added!</div>
+        <div class="form-error" id="addError" style="display:none"></div>
+        <div id="addModalForm"></div>
+        <div class="form-actions" style="margin-top:20px">
+            <button class="btn btn-ghost" onclick="closeAddModal()">Cancel</button>
+            <button class="btn btn-primary" id="addModalSave" onclick="saveNewEntry()">Add Investor</button>
+        </div>
+    </div>
+</div>
+
 <!-- MAIN APP -->
 <div class="app-container" id="appContainer">
     <div class="top-nav">
@@ -331,12 +372,15 @@
         <!-- DASHBOARD -->
         <div class="page active" id="page-dashboard">
             <div class="summary-cards" id="summaryCards"></div>
-            <div class="data-tabs" id="dataTabs">
-                <button class="data-tab active" data-dtab="pipeline" onclick="switchDataTab('pipeline')">Pipeline</button>
-                <button class="data-tab" data-dtab="seed" onclick="switchDataTab('seed')">Seed Re-Approach</button>
-                <button class="data-tab" data-dtab="kol" onclick="switchDataTab('kol')">KOL Round</button>
-                <button class="data-tab" data-dtab="outreach" onclick="switchDataTab('outreach')">Outreach Plan</button>
-                <button class="data-tab" data-dtab="token" onclick="switchDataTab('token')">Token Holdings</button>
+            <div style="display:flex;align-items:center;margin-bottom:20px">
+                <div class="data-tabs" id="dataTabs" style="margin-bottom:0;flex:1">
+                    <button class="data-tab active" data-dtab="pipeline" onclick="switchDataTab('pipeline')">Pipeline</button>
+                    <button class="data-tab" data-dtab="seed" onclick="switchDataTab('seed')">Seed Re-Approach</button>
+                    <button class="data-tab" data-dtab="kol" onclick="switchDataTab('kol')">KOL Round</button>
+                    <button class="data-tab" data-dtab="outreach" onclick="switchDataTab('outreach')">Outreach Plan</button>
+                    <button class="data-tab" data-dtab="token" onclick="switchDataTab('token')">Token Holdings</button>
+                </div>
+                <button onclick="openAddModal()" style="padding:8px 18px;background:#eab308;color:#000;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;font-family:'Inter',sans-serif">+ Add New</button>
             </div>
             <div class="tab-panel active" id="panel-pipeline"></div>
             <div class="tab-panel" id="panel-seed"></div>
@@ -380,7 +424,10 @@
 
         <!-- TOKEN UNLOCKS -->
         <div class="page" id="page-tokens">
-            <h2 style="font-size:22px;color:#fff;margin-bottom:20px">$ORDER Token Holdings & Unlock Schedule</h2>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+                <h2 style="font-size:22px;color:#fff">$ORDER Token Holdings & Unlock Schedule</h2>
+                <button onclick="openTokenUpdateModal()" style="padding:8px 18px;background:#eab308;color:#000;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;font-family:'Inter',sans-serif">Update Token Schedule</button>
+            </div>
             <div class="summary-cards" id="tokenSummaryCards" style="margin-bottom:24px"></div>
             <div class="table-wrap" id="tokenTableContainer"></div>
             <div class="unlock-timeline" id="unlockTimeline">
@@ -407,6 +454,37 @@ const state = {
     editingTab: null,
     editingRow: null,
 };
+
+// ==================== FIELD CONFIG ====================
+const STATUS_OPTIONS = ['', 'To Approach', 'Has Deck', 'Call Scheduled', 'Call Done', 'Interested', 'Pending', 'Closed', 'Passed'];
+const NEXT_ACTION_OPTIONS = ['', 'Send Deck', 'Schedule Call', 'Follow Up', 'Send Agreement', 'Awaiting Response', 'Close', 'None'];
+
+function isStatusField(h) { return h.toLowerCase() === 'status'; }
+function isNextActionField(h) { return h.toLowerCase().includes('next action'); }
+function isLastUpdatedField(h) { return h.toLowerCase().includes('last updated'); }
+function isTokenHoldingsField(h) { return h.toLowerCase() === 'token holdings'; }
+function isPctSoldField(h) { return h.toLowerCase() === '% sold'; }
+
+function getTokenDataForInvestor(name) {
+    const tokenData = state.data.token || [];
+    if (!name) return { holdings: '', pctSold: '' };
+    const match = tokenData.find(r => {
+        const tName = (findVal(r, 'name') || '').toLowerCase().trim();
+        return tName === name.toLowerCase().trim();
+    });
+    if (!match) return { holdings: '', pctSold: '' };
+    const allocation = findVal(match, 'allocation') || findVal(match, 'token allocation') || '';
+    const pctSold = findVal(match, '% sold') || '';
+    return { holdings: allocation, pctSold: pctSold };
+}
+
+function buildSelectHtml(fieldName, currentVal, options) {
+    const opts = options.map(o => {
+        const selected = (currentVal || '').toLowerCase().trim() === o.toLowerCase().trim() ? 'selected' : '';
+        return `<option value="${esc(o)}" ${selected}>${o || '-- Select --'}</option>`;
+    }).join('');
+    return `<div class="form-group"><label>${esc(fieldName)}</label><select data-efield="${esc(fieldName)}">${opts}</select></div>`;
+}
 
 // ==================== AUTH ====================
 async function doLogin() {
@@ -558,7 +636,8 @@ function findVal(row, key) {
 }
 
 function renderTable(data, columns, tab) {
-    if (!data || !data.length) return '<div class="empty">No data loaded</div>';
+    if (!data || !data.length) return `<div class="empty">No data loaded</div><div style="margin-top:16px"><button class="btn btn-primary" onclick="openAddModal('${tab}')">+ Add New Entry</button></div>`;
+    const colCount = columns.length;
     const headerRow = columns.map(c => `<th>${esc(c.label)}</th>`).join('');
     const bodyRows = data.map((row, idx) => {
         const cells = columns.map(c => {
@@ -568,7 +647,8 @@ function renderTable(data, columns, tab) {
         }).join('');
         return `<tr onclick="openEditModal('${tab}', ${idx})">${cells}</tr>`;
     }).join('');
-    return `<div class="table-wrap"><table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
+    const addRow = `<tr onclick="openAddModal('${tab}')" style="cursor:pointer"><td colspan="${colCount}" style="text-align:center;padding:14px;color:#7C3AED;font-weight:600;font-size:13px;border-bottom:none">+ Add New Entry</td></tr>`;
+    return `<div class="table-wrap"><table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}${addRow}</tbody></table></div>`;
 }
 
 function renderPipelinePanel() {
@@ -863,37 +943,6 @@ async function submitEntry() {
 
 function clearEntryForm() { initEntryForm(); }
 
-// ==================== FIELD CONFIG ====================
-const STATUS_OPTIONS = ['', 'To Approach', 'Has Deck', 'Call Scheduled', 'Call Done', 'Interested', 'Pending', 'Closed', 'Passed'];
-const NEXT_ACTION_OPTIONS = ['', 'Send Deck', 'Schedule Call', 'Follow Up', 'Send Agreement', 'Awaiting Response', 'Close', 'None'];
-
-function isStatusField(h) { return h.toLowerCase() === 'status'; }
-function isNextActionField(h) { return h.toLowerCase().includes('next action'); }
-function isLastUpdatedField(h) { return h.toLowerCase().includes('last updated'); }
-function isTokenHoldingsField(h) { return h.toLowerCase() === 'token holdings'; }
-function isPctSoldField(h) { return h.toLowerCase() === '% sold'; }
-
-function getTokenDataForInvestor(name) {
-    const tokenData = state.data.token || [];
-    if (!name) return { holdings: '', pctSold: '' };
-    const match = tokenData.find(r => {
-        const tName = (findVal(r, 'name') || '').toLowerCase().trim();
-        return tName === name.toLowerCase().trim();
-    });
-    if (!match) return { holdings: '', pctSold: '' };
-    const allocation = findVal(match, 'allocation') || findVal(match, 'token allocation') || '';
-    const pctSold = findVal(match, '% sold') || '';
-    return { holdings: allocation, pctSold: pctSold };
-}
-
-function buildSelectHtml(fieldName, currentVal, options) {
-    const opts = options.map(o => {
-        const selected = (currentVal || '').toLowerCase().trim() === o.toLowerCase().trim() ? 'selected' : '';
-        return `<option value="${esc(o)}" ${selected}>${o || '-- Select --'}</option>`;
-    }).join('');
-    return `<div class="form-group"><label>${esc(fieldName)}</label><select data-efield="${esc(fieldName)}">${opts}</select></div>`;
-}
-
 // ==================== EDIT MODAL ====================
 function openEditModal(tab, rowIndex) {
     const data = state.data[tab];
@@ -951,22 +1000,23 @@ function closeEditModal() {
 
 async function saveEdit() {
     if (state.editingTab === null || state.editingRow === null) return;
+    const tab = state.editingTab;
     const fields = document.querySelectorAll('#editModalForm [data-efield]');
     const rowData = {};
     fields.forEach(f => { rowData[f.dataset.efield] = f.value; });
     const btn = document.getElementById('editModalSave');
     btn.disabled = true; btn.textContent = 'Saving...';
     try {
-        const res = await fetch(`/api/sheets/${state.editingTab}/${state.editingRow}`, {
+        const res = await fetch(`/api/sheets/${tab}/${state.editingRow}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ rowData })
         });
         if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Update failed'); }
         toast('Updated successfully', 'success');
         closeEditModal();
-        await fetchTab(state.editingTab);
+        await fetchTab(tab);
         renderDashboard();
-        if (state.editingTab === 'token') renderTokenPage();
+        if (tab === 'token') renderTokenPage();
     } catch (e) {
         toast('Update failed: ' + e.message, 'error');
     } finally {
@@ -976,22 +1026,23 @@ async function saveEdit() {
 
 async function deleteRow() {
     if (state.editingTab === null || state.editingRow === null) return;
-    const row = state.data[state.editingTab][state.editingRow];
+    const tab = state.editingTab;
+    const row = state.data[tab][state.editingRow];
     const name = findVal(row, 'name') || findVal(row, 'contact') || 'this investor';
     if (!confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`)) return;
 
     const btn = document.getElementById('editModalDelete');
     btn.disabled = true; btn.textContent = 'Deleting...';
     try {
-        const res = await fetch(`/api/sheets/${state.editingTab}/${state.editingRow}`, {
+        const res = await fetch(`/api/sheets/${tab}/${state.editingRow}`, {
             method: 'DELETE'
         });
         if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Delete failed'); }
         toast('Investor deleted', 'success');
         closeEditModal();
-        await fetchTab(state.editingTab);
+        await fetchTab(tab);
         renderDashboard();
-        if (state.editingTab === 'token') renderTokenPage();
+        if (tab === 'token') renderTokenPage();
     } catch (e) {
         toast('Delete failed: ' + e.message, 'error');
     } finally {
@@ -1001,6 +1052,74 @@ async function deleteRow() {
 
 document.getElementById('editModal').addEventListener('click', function(e) {
     if (e.target === this) closeEditModal();
+});
+
+// ==================== ADD MODAL ====================
+function openAddModal(tab) {
+    tab = tab || state.currentTab;
+    const headers = state.headers[tab] || [];
+    if (!headers.length) { toast('No headers loaded. Try refreshing.', 'error'); return; }
+    document.getElementById('addModalTitle').textContent = `Add New - ${tab === 'pipeline' ? 'Pipeline' : tab === 'seed' ? 'Seed Re-Approach' : tab === 'kol' ? 'KOL Round' : tab === 'outreach' ? 'Outreach Plan' : 'Token Holdings'}`;
+    document.getElementById('addSuccess').style.display = 'none';
+    document.getElementById('addError').style.display = 'none';
+    const html = `<div class="form-grid">${headers.map(h => {
+        const hl = h.toLowerCase();
+        const isNotes = hl.includes('notes') || hl.includes('why');
+
+        if (isStatusField(h)) {
+            const opts = STATUS_OPTIONS.map(s => `<option value="${esc(s)}">${s || '-- Select --'}</option>`).join('');
+            return `<div class="form-group"><label>${esc(h)}</label><select data-afield="${esc(h)}">${opts}</select></div>`;
+        }
+        if (isNextActionField(h)) {
+            const opts = NEXT_ACTION_OPTIONS.map(s => `<option value="${esc(s)}">${s || '-- Select --'}</option>`).join('');
+            return `<div class="form-group"><label>${esc(h)}</label><select data-afield="${esc(h)}">${opts}</select></div>`;
+        }
+        if (isLastUpdatedField(h)) {
+            const today = new Date().toISOString().split('T')[0];
+            return `<div class="form-group"><label>${esc(h)}</label><input type="date" data-afield="${esc(h)}" value="${today}"></div>`;
+        }
+        if (isNotes) return `<div class="form-group full"><label>${esc(h)}</label><textarea data-afield="${esc(h)}"></textarea></div>`;
+        return `<div class="form-group"><label>${esc(h)}</label><input type="text" data-afield="${esc(h)}" value=""></div>`;
+    }).join('')}</div>`;
+    document.getElementById('addModalForm').innerHTML = html;
+    document.getElementById('addModal').classList.add('show');
+}
+
+function closeAddModal() {
+    document.getElementById('addModal').classList.remove('show');
+}
+
+async function saveNewEntry() {
+    const tab = state.currentTab;
+    const fields = document.querySelectorAll('#addModalForm [data-afield]');
+    const rowData = {};
+    fields.forEach(f => { rowData[f.dataset.afield] = f.value; });
+
+    const btn = document.getElementById('addModalSave');
+    btn.disabled = true; btn.textContent = 'Adding...';
+    document.getElementById('addError').style.display = 'none';
+    try {
+        const res = await fetch(`/api/sheets/${tab}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rowData })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Add failed'); }
+        toast('Investor added', 'success');
+        closeAddModal();
+        await fetchTab(tab);
+        renderDashboard();
+        if (tab === 'token') renderTokenPage();
+    } catch (e) {
+        document.getElementById('addError').textContent = e.message;
+        document.getElementById('addError').style.display = 'block';
+        toast('Add failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Add Investor';
+    }
+}
+
+document.getElementById('addModal').addEventListener('click', function(e) {
+    if (e.target === this) closeAddModal();
 });
 
 // ==================== UTILITIES ====================
@@ -1046,7 +1165,18 @@ function renderPct(val) {
     return `<span class="pct ${cls}">${n.toFixed(1)}%</span>`;
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeEditModal(); });
+// ==================== TOKEN UPDATE MODAL ====================
+function openTokenUpdateModal() {
+    document.getElementById('tokenUpdateModal').classList.add('show');
+}
+function closeTokenUpdateModal() {
+    document.getElementById('tokenUpdateModal').classList.remove('show');
+}
+document.getElementById('tokenUpdateModal').addEventListener('click', function(e) {
+    if (e.target === this) closeTokenUpdateModal();
+});
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeEditModal(); closeAddModal(); closeTokenUpdateModal(); } });
 </script>
 </body>
 </html>
