@@ -572,6 +572,21 @@ function renderTable(data, columns, tab) {
 }
 
 function renderPipelinePanel() {
+    // Enrich pipeline data with token holdings sync
+    const enrichedPipeline = (state.data.pipeline || []).map(row => {
+        const name = findVal(row, 'name') || '';
+        const tokenInfo = getTokenDataForInvestor(name);
+        const enriched = { ...row };
+        if (tokenInfo.holdings) {
+            const thKey = state.headers.pipeline.find(h => h.toLowerCase() === 'token holdings');
+            if (thKey) enriched[thKey] = tokenInfo.holdings;
+        }
+        if (tokenInfo.pctSold) {
+            const psKey = state.headers.pipeline.find(h => h.toLowerCase() === '% sold');
+            if (psKey) enriched[psKey] = tokenInfo.pctSold;
+        }
+        return enriched;
+    });
     const cols = [
         { key: 'name', label: 'Name' },
         { key: 'org', label: 'Org' },
@@ -585,7 +600,7 @@ function renderPipelinePanel() {
         { key: 'token holdings', label: 'Token Holdings', render: v => fmtNum(v) },
         { key: '% sold', label: '% Sold', render: v => renderPct(v) },
     ];
-    document.getElementById('panel-pipeline').innerHTML = renderTable(state.data.pipeline, cols, 'pipeline');
+    document.getElementById('panel-pipeline').innerHTML = renderTable(enrichedPipeline, cols, 'pipeline');
 }
 
 function renderSeedPanel() {
@@ -772,13 +787,29 @@ function buildDynamicFields(cat, existingData) {
     const html = headers.map(h => {
         const val = existingData ? (existingData[h] || '') : '';
         const isNotes = h.toLowerCase().includes('notes') || h.toLowerCase().includes('why');
-        const isStatus = h.toLowerCase().includes('status');
-        if (isStatus) {
-            const statuses = ['', 'To Approach', 'Has Deck', 'Call Scheduled', 'Call Done', 'Interested', 'Pending', 'Closed', 'Passed'];
-            const opts = statuses.map(s => `<option value="${s}" ${val.toLowerCase() === s.toLowerCase() ? 'selected' : ''}>${s || '-- Select --'}</option>`).join('');
+
+        // Status dropdown
+        if (isStatusField(h)) {
+            const opts = STATUS_OPTIONS.map(s => `<option value="${s}" ${(val || '').toLowerCase().trim() === s.toLowerCase().trim() ? 'selected' : ''}>${s || '-- Select --'}</option>`).join('');
             return `<div class="form-group"><label>${esc(h)}</label><select data-field="${esc(h)}">${opts}</select></div>`;
         }
+
+        // Next Action dropdown
+        if (isNextActionField(h)) {
+            const opts = NEXT_ACTION_OPTIONS.map(s => `<option value="${s}" ${(val || '').toLowerCase().trim() === s.toLowerCase().trim() ? 'selected' : ''}>${s || '-- Select --'}</option>`).join('');
+            return `<div class="form-group"><label>${esc(h)}</label><select data-field="${esc(h)}">${opts}</select></div>`;
+        }
+
+        // Last Updated date picker
+        if (isLastUpdatedField(h)) {
+            const dateVal = val ? val.split('/').length === 3 ? val.split('/').reverse().join('-') : val : '';
+            return `<div class="form-group"><label>${esc(h)}</label><input type="date" data-field="${esc(h)}" value="${esc(dateVal)}"></div>`;
+        }
+
+        // Notes/Why textarea
         if (isNotes) return `<div class="form-group full"><label>${esc(h)}</label><textarea data-field="${esc(h)}">${esc(val)}</textarea></div>`;
+
+        // Default text input
         return `<div class="form-group"><label>${esc(h)}</label><input type="text" data-field="${esc(h)}" value="${esc(val)}"></div>`;
     }).join('');
     document.getElementById('entryDynamicFields').innerHTML = html;
@@ -832,6 +863,37 @@ async function submitEntry() {
 
 function clearEntryForm() { initEntryForm(); }
 
+// ==================== FIELD CONFIG ====================
+const STATUS_OPTIONS = ['', 'To Approach', 'Has Deck', 'Call Scheduled', 'Call Done', 'Interested', 'Pending', 'Closed', 'Passed'];
+const NEXT_ACTION_OPTIONS = ['', 'Send Deck', 'Schedule Call', 'Follow Up', 'Send Agreement', 'Awaiting Response', 'Close', 'None'];
+
+function isStatusField(h) { return h.toLowerCase() === 'status'; }
+function isNextActionField(h) { return h.toLowerCase().includes('next action'); }
+function isLastUpdatedField(h) { return h.toLowerCase().includes('last updated'); }
+function isTokenHoldingsField(h) { return h.toLowerCase() === 'token holdings'; }
+function isPctSoldField(h) { return h.toLowerCase() === '% sold'; }
+
+function getTokenDataForInvestor(name) {
+    const tokenData = state.data.token || [];
+    if (!name) return { holdings: '', pctSold: '' };
+    const match = tokenData.find(r => {
+        const tName = (findVal(r, 'name') || '').toLowerCase().trim();
+        return tName === name.toLowerCase().trim();
+    });
+    if (!match) return { holdings: '', pctSold: '' };
+    const allocation = findVal(match, 'allocation') || findVal(match, 'token allocation') || '';
+    const pctSold = findVal(match, '% sold') || '';
+    return { holdings: allocation, pctSold: pctSold };
+}
+
+function buildSelectHtml(fieldName, currentVal, options) {
+    const opts = options.map(o => {
+        const selected = (currentVal || '').toLowerCase().trim() === o.toLowerCase().trim() ? 'selected' : '';
+        return `<option value="${esc(o)}" ${selected}>${o || '-- Select --'}</option>`;
+    }).join('');
+    return `<div class="form-group"><label>${esc(fieldName)}</label><select data-efield="${esc(fieldName)}">${opts}</select></div>`;
+}
+
 // ==================== EDIT MODAL ====================
 function openEditModal(tab, rowIndex) {
     const data = state.data[tab];
@@ -840,11 +902,42 @@ function openEditModal(tab, rowIndex) {
     state.editingRow = rowIndex;
     const row = data[rowIndex];
     const headers = state.headers[tab] || Object.keys(row);
-    document.getElementById('editModalTitle').textContent = `Edit: ${findVal(row, 'name') || 'Row ' + (rowIndex + 1)}`;
+    const investorName = findVal(row, 'name') || '';
+    const tokenInfo = getTokenDataForInvestor(investorName);
+    document.getElementById('editModalTitle').textContent = `Edit: ${investorName || 'Row ' + (rowIndex + 1)}`;
     const html = `<div class="form-grid">${headers.map(h => {
         const val = row[h] || '';
-        const isNotes = h.toLowerCase().includes('notes') || h.toLowerCase().includes('why');
+        const hl = h.toLowerCase();
+        const isNotes = hl.includes('notes') || hl.includes('why');
+
+        // Status dropdown
+        if (isStatusField(h)) return buildSelectHtml(h, val, STATUS_OPTIONS);
+
+        // Next Action dropdown
+        if (isNextActionField(h)) return buildSelectHtml(h, val, NEXT_ACTION_OPTIONS);
+
+        // Last Updated date picker
+        if (isLastUpdatedField(h)) {
+            const dateVal = val ? val.split('/').length === 3 ? val.split('/').reverse().join('-') : val : '';
+            return `<div class="form-group"><label>${esc(h)}</label><input type="date" data-efield="${esc(h)}" value="${esc(dateVal)}"></div>`;
+        }
+
+        // Token Holdings (synced, read-only in pipeline)
+        if (isTokenHoldingsField(h) && tab === 'pipeline') {
+            const syncVal = tokenInfo.holdings || val;
+            return `<div class="form-group"><label>${esc(h)} <span style="font-size:10px;color:#7C3AED;font-weight:400">(synced from Token Holdings)</span></label><input type="text" data-efield="${esc(h)}" value="${esc(syncVal)}" readonly style="opacity:0.6;cursor:not-allowed"></div>`;
+        }
+
+        // % Sold (synced, read-only in pipeline)
+        if (isPctSoldField(h) && tab === 'pipeline') {
+            const syncVal = tokenInfo.pctSold || val;
+            return `<div class="form-group"><label>${esc(h)} <span style="font-size:10px;color:#7C3AED;font-weight:400">(synced from Token Holdings)</span></label><input type="text" data-efield="${esc(h)}" value="${esc(syncVal)}" readonly style="opacity:0.6;cursor:not-allowed"></div>`;
+        }
+
+        // Notes/Why textarea
         if (isNotes) return `<div class="form-group full"><label>${esc(h)}</label><textarea data-efield="${esc(h)}">${esc(val)}</textarea></div>`;
+
+        // Default text input
         return `<div class="form-group"><label>${esc(h)}</label><input type="text" data-efield="${esc(h)}" value="${esc(val)}"></div>`;
     }).join('')}</div>`;
     document.getElementById('editModalForm').innerHTML = html;
