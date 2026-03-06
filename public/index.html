@@ -360,7 +360,6 @@
     <div class="top-nav">
         <span class="logo">Orderly CRM</span>
         <a href="#" onclick="showPage('dashboard')" class="nav-link active" data-page="dashboard">Dashboard</a>
-        <a href="#" onclick="showPage('entry')" class="nav-link" data-page="entry">Log Update</a>
         <a href="#" onclick="showPage('tokens')" class="nav-link" data-page="tokens">Token Unlocks</a>
         <span class="spacer"></span>
         <span class="sync-info" id="syncInfo">Last synced: never</span>
@@ -389,39 +388,6 @@
             <div class="tab-panel" id="panel-token"></div>
         </div>
 
-        <!-- LOG UPDATE -->
-        <div class="page" id="page-entry">
-            <div class="form-container">
-                <div class="form-header"><h2>Log Investor Update</h2></div>
-                <div class="form-success" id="entrySuccess">Saved successfully!</div>
-                <div class="form-error" id="entryError"></div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Category</label>
-                        <select id="entryCategory" onchange="onCategoryChange()">
-                            <option value="">Select category...</option>
-                            <option value="pipeline">Pipeline</option>
-                            <option value="seed">Seed Re-Approach</option>
-                            <option value="kol">KOL Round</option>
-                            <option value="outreach">Outreach Plan</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Existing Investor</label>
-                        <select id="entryExisting" onchange="onExistingSelect()">
-                            <option value="__new__">+ Add New</option>
-                        </select>
-                    </div>
-                    <hr class="form-divider">
-                    <div id="entryDynamicFields" class="form-grid" style="grid-column:1/-1"></div>
-                </div>
-                <div class="form-actions">
-                    <button class="btn btn-ghost" onclick="clearEntryForm()">Clear</button>
-                    <button class="btn btn-primary" id="entrySaveBtn" onclick="submitEntry()">Save</button>
-                </div>
-            </div>
-        </div>
-
         <!-- TOKEN UNLOCKS -->
         <div class="page" id="page-tokens">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
@@ -430,15 +396,6 @@
             </div>
             <div class="summary-cards" id="tokenSummaryCards" style="margin-bottom:24px"></div>
             <div class="table-wrap" id="tokenTableContainer"></div>
-            <div class="unlock-timeline" id="unlockTimeline">
-                <h3>Vesting Progress</h3>
-                <div id="vestingBars"></div>
-                <div class="timeline-legend">
-                    <span><span class="legend-dot" style="background:#22c55e"></span> In Wallet / Unlocked</span>
-                    <span><span class="legend-dot" style="background:#7C3AED"></span> Remaining Vesting</span>
-                    <span><span class="legend-dot" style="background:#ef4444"></span> Sold</span>
-                </div>
-            </div>
         </div>
 
     </div>
@@ -462,20 +419,40 @@ const NEXT_ACTION_OPTIONS = ['', 'Send Deck', 'Schedule Call', 'Follow Up', 'Sen
 function isStatusField(h) { return h.toLowerCase() === 'status'; }
 function isNextActionField(h) { return h.toLowerCase().includes('next action'); }
 function isLastUpdatedField(h) { return h.toLowerCase().includes('last updated'); }
-function isTokenHoldingsField(h) { return h.toLowerCase() === 'token holdings'; }
-function isPctSoldField(h) { return h.toLowerCase() === '% sold'; }
+function isTotalTokenField(h) { return h.toLowerCase() === 'total token'; }
+function isVestedPctField(h) { return h.toLowerCase() === 'vested %'; }
+function isPctSoldField(h) { return h.toLowerCase() === '% sold' || h.toLowerCase() === 'sold %'; }
 
-function getTokenDataForInvestor(name) {
+function getTokenDataForInvestor(name, org) {
     const tokenData = state.data.token || [];
-    if (!name) return { holdings: '', pctSold: '' };
-    const match = tokenData.find(r => {
+    if (!name && !org) return { totalToken: '', vestedPct: '', pctSold: '' };
+
+    // Find all matching token entries (match on name OR org, partial match)
+    const nameL = (name || '').toLowerCase().trim();
+    const orgL = (org || '').toLowerCase().trim();
+    const matches = tokenData.filter(r => {
         const tName = (findVal(r, 'name') || '').toLowerCase().trim();
-        return tName === name.toLowerCase().trim();
+        if (nameL && tName === nameL) return true;
+        if (orgL && tName.includes(orgL)) return true;
+        if (orgL && orgL.includes(tName)) return true;
+        return false;
     });
-    if (!match) return { holdings: '', pctSold: '' };
-    const allocation = findVal(match, 'allocation') || findVal(match, 'token allocation') || '';
-    const pctSold = findVal(match, '% sold') || '';
-    return { holdings: allocation, pctSold: pctSold };
+
+    if (!matches.length) return { totalToken: '', vestedPct: '', pctSold: '' };
+
+    // Aggregate across all matches (e.g. Pantera has 2 entries)
+    let totalAlloc = 0, totalSold = 0, totalVested = 0;
+    matches.forEach(m => {
+        totalAlloc += parseNum(findVal(m, 'allocation') || findVal(m, 'total') || '0');
+        totalSold += parseNum(findVal(m, 'sold') || '0');
+        const vPct = parseNum(findVal(m, '% vested') || findVal(m, 'vested') || '0');
+        const alloc = parseNum(findVal(m, 'allocation') || '0');
+        totalVested += vPct * alloc;
+    });
+
+    const vestedPct = totalAlloc > 0 ? ((totalVested / totalAlloc) * 100).toFixed(1) + '%' : '';
+    const pctSold = totalAlloc > 0 ? ((totalSold / totalAlloc) * 100).toFixed(1) + '%' : '';
+    return { totalToken: totalAlloc.toString(), vestedPct, pctSold };
 }
 
 function buildSelectHtml(fieldName, currentVal, options) {
@@ -652,21 +629,7 @@ function renderTable(data, columns, tab) {
 }
 
 function renderPipelinePanel() {
-    // Enrich pipeline data with token holdings sync
-    const enrichedPipeline = (state.data.pipeline || []).map(row => {
-        const name = findVal(row, 'name') || '';
-        const tokenInfo = getTokenDataForInvestor(name);
-        const enriched = { ...row };
-        if (tokenInfo.holdings) {
-            const thKey = state.headers.pipeline.find(h => h.toLowerCase() === 'token holdings');
-            if (thKey) enriched[thKey] = tokenInfo.holdings;
-        }
-        if (tokenInfo.pctSold) {
-            const psKey = state.headers.pipeline.find(h => h.toLowerCase() === '% sold');
-            if (psKey) enriched[psKey] = tokenInfo.pctSold;
-        }
-        return enriched;
-    });
+    const enrichedPipeline = state.data.pipeline || [];
     const cols = [
         { key: 'name', label: 'Name' },
         { key: 'org', label: 'Org' },
@@ -677,8 +640,9 @@ function renderPipelinePanel() {
         { key: 'notes', label: 'Notes' },
         { key: 'next action', label: 'Next Action' },
         { key: 'last updated', label: 'Last Updated' },
-        { key: 'token holdings', label: 'Token Holdings', render: v => fmtNum(v) },
-        { key: '% sold', label: '% Sold', render: v => renderPct(v) },
+        { key: 'token holdings', label: 'Total Token', render: v => fmtNum(v) },
+        { key: 'vested %', label: 'Vested %', render: v => renderPct(v) },
+        { key: '% sold', label: 'Sold %', render: v => renderPct(v) },
     ];
     document.getElementById('panel-pipeline').innerHTML = renderTable(enrichedPipeline, cols, 'pipeline');
 }
@@ -793,36 +757,6 @@ function renderTokenPage() {
         return { key: h, label: h };
     });
     document.getElementById('tokenTableContainer').innerHTML = renderTable(data, cols, 'token');
-
-    const barsHtml = data.map(row => {
-        const name = findVal(row, 'name') || findVal(row, 'code') || 'Unknown';
-        const allocation = parseNum(findVal(row, 'allocation'));
-        if (allocation <= 0) return '';
-        const wallet = parseNum(findVal(row, 'wallet') || findVal(row, 'in wallet'));
-        const staking = parseNum(findVal(row, 'staking'));
-        const sold = parseNum(findVal(row, 'sold'));
-        const vesting = parseNum(findVal(row, 'remaining vesting'));
-        const unlocked = wallet + staking;
-        const unlockedPct = Math.min(100, (unlocked / allocation) * 100);
-        const soldPct = Math.min(100 - unlockedPct, (sold / allocation) * 100);
-        const vestingPct = Math.min(100 - unlockedPct - soldPct, (vesting / allocation) * 100);
-        return `
-            <div class="timeline-bar-container">
-                <div class="timeline-label">
-                    <span class="name">${esc(name)}</span>
-                    <span class="amount">${fmtNum(allocation)} ORDER</span>
-                </div>
-                <div class="timeline-bar-bg">
-                    <div style="display:flex;height:100%">
-                        <div class="timeline-bar-fill unlocked" style="width:${unlockedPct}%"></div>
-                        <div class="timeline-bar-fill sold" style="width:${soldPct}%"></div>
-                        <div class="timeline-bar-fill vesting" style="width:${vestingPct}%"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-    document.getElementById('vestingBars').innerHTML = barsHtml || '<div class="empty">No vesting data available</div>';
 }
 
 // ==================== ENTRY FORM ====================
@@ -952,7 +886,8 @@ function openEditModal(tab, rowIndex) {
     const row = data[rowIndex];
     const headers = state.headers[tab] || Object.keys(row);
     const investorName = findVal(row, 'name') || '';
-    const tokenInfo = getTokenDataForInvestor(investorName);
+    const investorOrg = findVal(row, 'org') || '';
+    const tokenInfo = getTokenDataForInvestor(investorName, investorOrg);
     document.getElementById('editModalTitle').textContent = `Edit: ${investorName || 'Row ' + (rowIndex + 1)}`;
     const html = `<div class="form-grid">${headers.map(h => {
         const val = row[h] || '';
@@ -971,16 +906,9 @@ function openEditModal(tab, rowIndex) {
             return `<div class="form-group"><label>${esc(h)}</label><input type="date" data-efield="${esc(h)}" value="${esc(dateVal)}"></div>`;
         }
 
-        // Token Holdings (synced, read-only in pipeline)
-        if (isTokenHoldingsField(h) && tab === 'pipeline') {
-            const syncVal = tokenInfo.holdings || val;
-            return `<div class="form-group"><label>${esc(h)} <span style="font-size:10px;color:#7C3AED;font-weight:400">(synced from Token Holdings)</span></label><input type="text" data-efield="${esc(h)}" value="${esc(syncVal)}" readonly style="opacity:0.6;cursor:not-allowed"></div>`;
-        }
-
-        // % Sold (synced, read-only in pipeline)
-        if (isPctSoldField(h) && tab === 'pipeline') {
-            const syncVal = tokenInfo.pctSold || val;
-            return `<div class="form-group"><label>${esc(h)} <span style="font-size:10px;color:#7C3AED;font-weight:400">(synced from Token Holdings)</span></label><input type="text" data-efield="${esc(h)}" value="${esc(syncVal)}" readonly style="opacity:0.6;cursor:not-allowed"></div>`;
+        // Token/vesting fields - editable
+        if ((isTotalTokenField(h) || isVestedPctField(h) || isPctSoldField(h)) && tab === 'pipeline') {
+            return `<div class="form-group"><label>${esc(h)}</label><input type="text" data-efield="${esc(h)}" value="${esc(val)}"></div>`;
         }
 
         // Notes/Why textarea
