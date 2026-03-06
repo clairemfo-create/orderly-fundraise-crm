@@ -419,15 +419,14 @@ const NEXT_ACTION_OPTIONS = ['', 'Send Deck', 'Schedule Call', 'Follow Up', 'Sen
 function isStatusField(h) { return h.toLowerCase() === 'status'; }
 function isNextActionField(h) { return h.toLowerCase().includes('next action'); }
 function isLastUpdatedField(h) { return h.toLowerCase().includes('last updated'); }
-function isTotalTokenField(h) { return h.toLowerCase() === 'total token'; }
-function isVestedPctField(h) { return h.toLowerCase() === 'vested %'; }
-function isPctSoldField(h) { return h.toLowerCase() === '% sold' || h.toLowerCase() === 'sold %'; }
+function isTokenAllocField(h) { const l = h.toLowerCase(); return l.includes('token holding') || l === 'token allocated'; }
+function isTokenVestingField(h) { const l = h.toLowerCase(); return l.includes('remaining vesting') || l.includes('token vesting'); }
+function isPctSoldField(h) { const l = h.toLowerCase(); return l === '% sold' || l === 'sold %' || l.includes('% sold'); }
 
 function getTokenDataForInvestor(name, org) {
     const tokenData = state.data.token || [];
-    if (!name && !org) return { totalToken: '', vestedPct: '', pctSold: '' };
+    if (!name && !org) return { totalToken: '', tokenVesting: '', pctSold: '' };
 
-    // Find all matching token entries (match on name OR org, partial match)
     const nameL = (name || '').toLowerCase().trim();
     const orgL = (org || '').toLowerCase().trim();
     const matches = tokenData.filter(r => {
@@ -438,21 +437,17 @@ function getTokenDataForInvestor(name, org) {
         return false;
     });
 
-    if (!matches.length) return { totalToken: '', vestedPct: '', pctSold: '' };
+    if (!matches.length) return { totalToken: '', tokenVesting: '', pctSold: '' };
 
-    // Aggregate across all matches (e.g. Pantera has 2 entries)
-    let totalAlloc = 0, totalSold = 0, totalVested = 0;
+    let totalAlloc = 0, totalSold = 0, totalVesting = 0;
     matches.forEach(m => {
         totalAlloc += parseNum(findVal(m, 'allocation') || findVal(m, 'total') || '0');
         totalSold += parseNum(findVal(m, 'sold') || '0');
-        const vPct = parseNum(findVal(m, '% vested') || findVal(m, 'vested') || '0');
-        const alloc = parseNum(findVal(m, 'allocation') || '0');
-        totalVested += vPct * alloc;
+        totalVesting += parseNum(findVal(m, 'remaining vesting') || findVal(m, 'vesting') || '0');
     });
 
-    const vestedPct = totalAlloc > 0 ? ((totalVested / totalAlloc) * 100).toFixed(1) + '%' : '';
     const pctSold = totalAlloc > 0 ? ((totalSold / totalAlloc) * 100).toFixed(1) + '%' : '';
-    return { totalToken: totalAlloc.toString(), vestedPct, pctSold };
+    return { totalToken: totalAlloc.toString(), tokenVesting: totalVesting.toString(), pctSold };
 }
 
 function buildSelectHtml(fieldName, currentVal, options) {
@@ -629,7 +624,24 @@ function renderTable(data, columns, tab) {
 }
 
 function renderPipelinePanel() {
-    const enrichedPipeline = state.data.pipeline || [];
+    const rawPipeline = state.data.pipeline || [];
+    // Enrich pipeline rows: use sheet data first, fallback to Token Holdings tab
+    const enrichedPipeline = rawPipeline.map(row => {
+        const name = findVal(row, 'name') || '';
+        const org = findVal(row, 'org') || '';
+        const tokenInfo = getTokenDataForInvestor(name, org);
+        const enriched = {...row};
+        // Token Allocated: use Pipeline "Token Holdings" column, fallback to Token Holdings tab
+        const sheetAlloc = findVal(row, 'token holding') || '';
+        enriched['__token_allocated'] = sheetAlloc || (tokenInfo.totalToken !== '0' ? tokenInfo.totalToken : '');
+        // Token Vesting: use Pipeline "Remaining Vesting"/"Token Vesting" column, fallback to Token Holdings tab
+        const sheetVesting = findVal(row, 'vesting') || findVal(row, 'remaining') || '';
+        enriched['__token_vesting'] = sheetVesting || (tokenInfo.tokenVesting !== '0' ? tokenInfo.tokenVesting : '');
+        // % Sold: use Pipeline "% Sold" column, fallback to Token Holdings tab
+        const sheetSold = findVal(row, '% sold') || findVal(row, 'sold %') || '';
+        enriched['__pct_sold'] = sheetSold || tokenInfo.pctSold || '';
+        return enriched;
+    });
     const cols = [
         { key: 'name', label: 'Name' },
         { key: 'org', label: 'Org' },
@@ -640,9 +652,9 @@ function renderPipelinePanel() {
         { key: 'notes', label: 'Notes' },
         { key: 'next action', label: 'Next Action' },
         { key: 'last updated', label: 'Last Updated' },
-        { key: 'token holdings', label: 'Total Token', render: v => fmtNum(v) },
-        { key: 'vested %', label: 'Vested %', render: v => renderPct(v) },
-        { key: '% sold', label: 'Sold %', render: v => renderPct(v) },
+        { key: '__token_allocated', label: 'Token Allocated', render: v => fmtNum(v) },
+        { key: '__token_vesting', label: 'Token Vesting', render: v => fmtNum(v) },
+        { key: '__pct_sold', label: '% Sold', render: v => renderPct(v) },
     ];
     document.getElementById('panel-pipeline').innerHTML = renderTable(enrichedPipeline, cols, 'pipeline');
 }
@@ -906,9 +918,10 @@ function openEditModal(tab, rowIndex) {
             return `<div class="form-group"><label>${esc(h)}</label><input type="date" data-efield="${esc(h)}" value="${esc(dateVal)}"></div>`;
         }
 
-        // Token/vesting fields - editable
-        if ((isTotalTokenField(h) || isVestedPctField(h) || isPctSoldField(h)) && tab === 'pipeline') {
-            return `<div class="form-group"><label>${esc(h)}</label><input type="text" data-efield="${esc(h)}" value="${esc(val)}"></div>`;
+        // Token/vesting fields - editable with friendly labels
+        if ((isTokenAllocField(h) || isTokenVestingField(h) || isPctSoldField(h)) && tab === 'pipeline') {
+            const friendlyLabel = isTokenAllocField(h) ? 'Token Allocated' : isTokenVestingField(h) ? 'Token Vesting' : '% Sold';
+            return `<div class="form-group"><label>${friendlyLabel}</label><input type="text" data-efield="${esc(h)}" value="${esc(val)}" style="background:#1a1a24;border-color:#7C3AED"></div>`;
         }
 
         // Notes/Why textarea
